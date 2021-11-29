@@ -1,12 +1,18 @@
-import cv2
+import cv2, math
+import numpy as np
 from PIL import ImageFile
 
 from Config import *
 from Socket import ImageSocket, DataSocket
-from ImageProcessing import compute_image, match_images, estimate_difference, decompose_transform
+from ImageProcessing import *
 from Logger import get_logger
 
 logger = get_logger(__name__)
+
+def normalize(v):
+    norm = np.linalg.norm(v)
+    return v / norm
+from scipy.spatial.transform import Rotation
 
 def neither_none(*args):
     ret = True
@@ -51,13 +57,16 @@ if __name__ == '__main__':
             continue
     
         img, kp, des = compute_image(jpg_file)
+        h,w,_ = img.shape
         if DEBUG: cv2.imshow('img', img)
         if neither_none(*last_pivot, kp, des):
             t_img, t_kp, t_des = last_pivot
             matches = match_images(des, t_des)
-            tr_mat, re1, re2 = estimate_difference(matches, kp, t_kp)
-            if re1 < RESIDUAL_THRESHOLD and re2 < RESIDUAL_THRESHOLD:
-                trans, scale, rotate = decompose_transform(tr_mat)
+
+            H, R, T = estimate_perspective(matches, kp, t_kp, (w,h), np.array([0, 0, 1]))
+            vec = np.dot(R, np.array([0, 0, 1])) + T
+            nvec = normalize(vec)
+            data_sock.send(nvec.tolist())
 
         if save_img:
             last_pivot = (img, kp, des)
